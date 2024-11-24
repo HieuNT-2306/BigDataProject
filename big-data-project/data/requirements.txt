@@ -1,0 +1,8 @@
+aiohttp
+httpx
+orjson
+heapdict
+tqdm
+rich
+kafka-python
+dotenv
