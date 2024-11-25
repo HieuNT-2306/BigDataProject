@@ -7,12 +7,12 @@ import pathlib
 from datetime import datetime
 from kafka import KafkaProducer
 import json
-
 import httpx
 import tqdm
 from crawler import Crawler
 from dotenv import load_dotenv
-
+from urllib.request import urlopen
+import re as r
 # PATHS -------------------------------------------------------------------------------
 
 here = pathlib.Path(__file__).parent
@@ -109,7 +109,14 @@ assert (
 assert (
     password := password
 ), "API_CLASH_ROYALE_PASSWORD env variable is not define"
-ip = httpx.get("https://wtfismyip.com/text").text.strip()
+
+def getIP():
+    d = str(urlopen('http://checkip.dyndns.com/')
+            .read())
+
+    return r.compile(r'Address: (\d+\.\d+\.\d+\.\d+)').search(d).group(1)
+
+ip = getIP()
 
 credentials = {"email": email, "password": password}
 api_key = {
@@ -124,7 +131,10 @@ with httpx.Client(base_url="https://developer.clashroyale.com") as client:
     keys = client.post("/api/apikey/list", json={}).json().get("keys", [])
     if len(keys) == 10:
         client.post("/api/apikey/revoke", json={"id": keys[-1]["id"]})
-    api_token = client.post("/api/apikey/create", json=api_key).json()["key"]["key"]
+    tmp = client.post("/api/apikey/create", json=api_key).json()
+    print(tmp)
+    api_token = tmp["key"]["key"]
+    # api_token = client.post("/api/apikey/create", json=api_key).json()["key"]["key"]
 
 battlelogs = Crawler(
     api_token=api_token,
