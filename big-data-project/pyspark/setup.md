@@ -27,3 +27,8 @@
         `SPARK_HOME` : Path đến thư mục Spark, VD `D:\Applications\spark-3.5.3-bin-hadoop3`
         Sửa `PATH`: Thêm 2 variable: `%SPARK_HOME%\bin` và `%SPARK_HOME%\sbin`
 - Kiểm tra cài đặt thành công : `spark-shell --version`
+
+# IV. Chạy chương trình:
+Mở Terminal:
+    `git clone https://github.com/HieuNT-2306/BigDataProject/`
+
