@@ -31,4 +31,6 @@
 # IV. Chạy chương trình:
 Mở Terminal:
     `git clone https://github.com/HieuNT-2306/BigDataProject/`
+    `cd BigDataProject/big-data-project/pyspark`
+    `python kafka_to_spark.py`
 
