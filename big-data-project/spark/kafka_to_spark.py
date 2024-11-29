@@ -12,6 +12,7 @@ kafka_df = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", "localhost:9092") \
     .option("subscribe", "big_data_topic") \
+    .option("startingOffsets", "latest") \
     .load()
 
 # Dữ liệu Kafka trả về trong cột `value` dạng byte

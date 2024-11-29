@@ -132,7 +132,6 @@ with httpx.Client(base_url="https://developer.clashroyale.com") as client:
     if len(keys) == 10:
         client.post("/api/apikey/revoke", json={"id": keys[-1]["id"]})
     tmp = client.post("/api/apikey/create", json=api_key).json()
-    print(tmp)
     api_token = tmp["key"]["key"]
     # api_token = client.post("/api/apikey/create", json=api_key).json()["key"]["key"]
 
