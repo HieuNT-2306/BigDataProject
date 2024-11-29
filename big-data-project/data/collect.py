@@ -13,6 +13,8 @@ from crawler import Crawler
 from dotenv import load_dotenv
 from urllib.request import urlopen
 import re as r
+from urllib.request import urlopen
+import re as r
 # PATHS -------------------------------------------------------------------------------
 
 here = pathlib.Path(__file__).parent
@@ -109,6 +111,14 @@ assert (
 assert (
     password := password
 ), "API_CLASH_ROYALE_PASSWORD env variable is not define"
+
+def getIP():
+    d = str(urlopen('http://checkip.dyndns.com/')
+            .read())
+
+    return r.compile(r'Address: (\d+\.\d+\.\d+\.\d+)').search(d).group(1)
+
+ip = getIP()
 
 def getIP():
     d = str(urlopen('http://checkip.dyndns.com/')
