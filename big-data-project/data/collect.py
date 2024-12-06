@@ -13,6 +13,8 @@ from crawler import Crawler
 from dotenv import load_dotenv
 from urllib.request import urlopen
 import re as r
+from urllib.request import urlopen
+import re as r
 # PATHS -------------------------------------------------------------------------------
 
 here = pathlib.Path(__file__).parent
@@ -118,6 +120,14 @@ def getIP():
 
 ip = getIP()
 
+def getIP():
+    d = str(urlopen('http://checkip.dyndns.com/')
+            .read())
+
+    return r.compile(r'Address: (\d+\.\d+\.\d+\.\d+)').search(d).group(1)
+
+ip = getIP()
+
 credentials = {"email": email, "password": password}
 api_key = {
     "name": "cr-analysis",
@@ -132,7 +142,6 @@ with httpx.Client(base_url="https://developer.clashroyale.com") as client:
     if len(keys) == 10:
         client.post("/api/apikey/revoke", json={"id": keys[-1]["id"]})
     tmp = client.post("/api/apikey/create", json=api_key).json()
-    print(tmp)
     api_token = tmp["key"]["key"]
     # api_token = client.post("/api/apikey/create", json=api_key).json()["key"]["key"]
 
