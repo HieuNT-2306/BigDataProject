@@ -257,7 +257,7 @@ async def kafka():
             # Check for duplicates
             if (hb := hash(json.dumps(battle))) not in battles_saved:
                 # Send the battle data to Kafka
-                producer.send('big_data_topic', battle)
+                producer.send('big-data-topic', battle)
                 battles_saved.add(hb)
         
         progress_bar.update()

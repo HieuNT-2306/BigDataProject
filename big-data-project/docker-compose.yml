@@ -29,9 +29,9 @@ services:
 
   spark-master:
     container_name: hust-spark-master
+    hostname: spark-master
     build: .
     image: hust-spark-image
-    entrypoint: ['./entrypoint.sh', 'master']
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8080" ]
       interval: 5s
@@ -41,6 +41,8 @@ services:
       - ./spark/data:/opt/spark/data
       - ./spark/spark_apps:/opt/spark/apps
       - spark-logs:/opt/spark/spark-events
+      - ./entrypoint.sh:/entrypoint.sh
+    entrypoint: ['./entrypoint.sh', 'master']
     env_file:
       - .env.spark
     ports:
@@ -58,6 +60,7 @@ services:
       - .env.spark
     volumes:
       - spark-logs:/opt/spark/spark-events
+      - ./entrypoint.sh:/entrypoint.sh
     ports:
       - '18080:18080'
 
@@ -72,6 +75,7 @@ services:
       - ./spark/data:/opt/spark/data
       - ./spark/spark_apps:/opt/spark/apps
       - spark-logs:/opt/spark/spark-events
+      - ./entrypoint.sh:/entrypoint.sh
 
   mongodb:
     image: mongo:latest
