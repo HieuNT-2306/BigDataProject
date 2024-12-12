@@ -34,3 +34,7 @@ six
 stack-data
 traitlets
 wcwidth
+hdfs
+findspark
+confluent_kafka
+InfluxDBWriter
