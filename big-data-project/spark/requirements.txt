@@ -17,7 +17,6 @@ ipython==8.7.0
 jedi==0.18.2
 matplotlib-inline==0.1.6
 numpy
-pandas
 parso
 pexpect
 pickleshare
@@ -37,4 +36,4 @@ wcwidth
 hdfs
 findspark
 confluent_kafka
-InfluxDBWriter
+influxdb
