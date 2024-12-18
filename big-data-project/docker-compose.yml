@@ -1,4 +1,4 @@
-name:  big-data-hust-project
+name: big-data-hust-project
 services:
   broker:
     image: confluentinc/cp-kafka:latest
@@ -42,18 +42,17 @@ services:
       - ./spark/spark_apps:/opt/spark/apps
       - spark-logs:/opt/spark/spark-events
       - ./entrypoint.sh:/entrypoint.sh
-    entrypoint: ['./entrypoint.sh', 'master']
+    entrypoint: [ './entrypoint.sh', 'master' ]
     env_file:
       - .env.spark
     ports:
       - '9090:8080'
       - '7077:7077'
 
-
   spark-history-server:
     container_name: hust-spark-history
     image: hust-spark-image
-    entrypoint: ['./entrypoint.sh', 'history']
+    entrypoint: [ './entrypoint.sh', 'history' ]
     depends_on:
       - spark-master
     env_file:
@@ -66,7 +65,7 @@ services:
 
   spark-worker:
     image: hust-spark-image
-    entrypoint: ['./entrypoint.sh', 'worker']
+    entrypoint: [ './entrypoint.sh', 'worker' ]
     depends_on:
       - spark-master
     env_file:
@@ -97,5 +96,26 @@ services:
     depends_on:
       - mongodb
 
+  influxdb:
+    image: bitnami/influxdb:2.5.1
+    container_name: influxdb
+    restart: always
+    ports:
+      - 8086:8086
+    volumes:
+      - .\influxdb:/bitnami/influxdb
+    environment:
+      INFLUXDB_ADMIN_USER_PASSWORD: ${INFLUXDB_ADMIN_USER_PASSWORD}
+      INFLUXDB_USER: ${INFLUXDB_USER}
+      INFLUXDB_USER_PASSWORD: ${INFLUXDB_USER_PASSWORD}
+      INFLUXDB_ADMIN_USER_TOKEN: ${INFLUX_TOKEN}
+
+      INFLUXDB_DB: ${INFLUXDB_DB} # the database to be created on first startup
+      INFLUXDB_HTTP_AUTH_ENABLED: true # enable http auth
+      INFLUX_TOKEN: ${INFLUX_TOKEN}
+      INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
+      INFLUX_ORG: ${INFLUX_ORG}
+      INFLUXDB_MEASUREMENT: ${INFLUXDB_MEASUREMENT}
+
 volumes:
-  spark-logs: 
+  spark-logs:

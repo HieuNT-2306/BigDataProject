@@ -39,3 +39,4 @@ confluent_kafka
 influxdb
 pymongo
 python-dotenv
+influxdb_client
