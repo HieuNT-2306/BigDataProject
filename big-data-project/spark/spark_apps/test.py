@@ -6,16 +6,22 @@ path_to_utils = Path(__file__).parent.parent
 sys.path.insert(0, str(path_to_utils))
 sys.path.append("/app")
 
-from confluent_kafka import Consumer, KafkaError
+# from confluent_kafka import Consumer, KafkaError
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
 from pyspark.sql.functions import *
 from datetime import datetime
+from pymongo import MongoClient
+from dotenv import load_dotenv
 
 findspark.init()
 
 KAFKA_TOPIC_NAME = "big-data-topic"
 KAFKA_BOOTSTRAP_SERVERS = "broker:29092"
+load_dotenv()
+MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DATABASE = "BigData"
+MONGO_COLLECTION = "game_results"
 
 schema = StructType([
     StructField("battle_time", StringType(), True),
@@ -46,8 +52,10 @@ signal.signal(signal.SIGTERM, stop_query)
 
 if __name__ == "__main__":
     spark = (
-        SparkSession.builder.appName("KafkaInfluxDBStreaming")
+        SparkSession.builder.appName("KafkaMongoDBStreaming")
         .master("spark://spark-master:7077")
+        .config("spark.mongodb.input.uri", MONGO_URI)
+        .config("spark.mongodb.output.uri", MONGO_URI)
         .getOrCreate()
     )
 
@@ -66,34 +74,25 @@ if __name__ == "__main__":
 
     stockDataframe = inputStream.select(from_json(col("data"), schema).alias("game_result"))
     expandedDf = stockDataframe.select("game_result.*")
-    print("InfluxDB_Init Done - Testing Kafka")
+    print("MongoDB_Init Done - Testing Kafka")
 
     def process_batch(batch_df, batch_id):
         gameResults = batch_df.select("game_result.*")
         print(f"Batch processing {batch_id} started!")
         print(f"{gameResults.count()} records in this batch")
-        for gameResult in gameResults.collect():
-            battle_time = gameResult["battle_time"]
-            game_mode_test = gameResult["game_mode"]
-            player1 = gameResult["player1"]
-            player2 = gameResult["player2"]
 
-            tags = {
-                "player1_tag": player1["tag"],
-                "player2_tag": player2["tag"],
-                "game_mode": game_mode_test
-            }
-            fields = {
-                "player1_trophies": player1['trophies'],
-                "player1_crowns": player1['crowns'],
-                "player2_trophies": player2['trophies'],
-                "player2_crowns": player2['crowns'],
-            }
-            row_dict = gameResult.asDict()
-            row_dict['battle_time'] = row_dict['battle_time']  
-            json_string = json.dumps(row_dict)
-            print(json_string)
-            print("----------------------")
+        # Connect to MongoDB
+        client = MongoClient(MONGO_URI)
+        db = client[MONGO_DATABASE]
+        collection = db[MONGO_COLLECTION]
+
+        for gameResult in gameResults.collect():
+            # Convert Spark Row to a dictionary
+            document = gameResult.asDict(recursive=True)
+            # Insert into MongoDB
+            collection.insert_one(document)
+            print("Inserted document:", document)
+
         print(f"Batch processed {batch_id} done!")
 
     query = stockDataframe \
