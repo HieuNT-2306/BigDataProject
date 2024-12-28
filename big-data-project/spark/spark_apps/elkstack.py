@@ -78,19 +78,63 @@ if __name__ == "__main__":
     expandedDf = stockDataframe.select("game_result.*")
     print("Elasticsearch Init Done - Testing Kafka")
 
+    #id to name
+    cards_path = "/opt/spark/apps/cards.json"
+    gamemodes_path = "/opt/spark/apps/gamemodes.json"
+    
+    cardjson = json.load(open(cards_path))
+    gamemodesjson = json.load(open(gamemodes_path))
+    # print(f"Cards: {cardjson}")
+    # print(f"Gamemodes: {gamemodesjson}")    
+    # Tạo ánh xạ từ id sang name
+    # Ánh xạ từ card id sang tên card
+    cards_mapping = {card["id"]: card["name"] for card in cardjson}
+
+    # Ánh xạ từ game mode id sang tên game mode
+    gamemodes_mapping = {mode["id"]: mode["name_en"] for mode in gamemodesjson}
+
+
     def process_batch(batch_df, batch_id):
         print(f"Batch processing {batch_id} started!")
         gameResults = batch_df.select("game_result.*")
         print(f"{gameResults.count()} records in this batch")
-        current_timestamp = datetime.now().isoformat()
-        # Ghi từng document vào Elasticsearch
-        for gameResult in gameResults.collect():
-            document = gameResult.asDict(recursive=True)
-            document['timestamp'] = current_timestamp
-            response = es.index(index=ES_INDEX, document=document)
-            print("Inserted document into Elasticsearch:", response)            
-        print(f"Batch processed {batch_id} done!")
 
+        # Thay thế `game_mode` và `deck` bằng `name`
+        def map_game_mode(game_mode_id):
+            return gamemodes_mapping.get(game_mode_id, "Unknown")
+
+        def map_deck(deck_ids):
+            return [cards_mapping.get(card_id, f"Unknown({card_id})") for card_id in deck_ids]
+
+        # Áp dụng ánh xạ cho từng batch
+        mapped_df = batch_df.select(
+            col("game_result.battle_time").alias("battle_time"),
+            udf(map_game_mode)(col("game_result.game_mode")).alias("game_mode_name"),
+            col("game_result.player1.tag").alias("player1_tag"),
+            col("game_result.player1.trophies").alias("player1_trophies"),
+            col("game_result.player1.crowns").alias("player1_crowns"),
+            udf(map_deck)(col("game_result.player1.deck")).alias("player1_deck_names"),
+            col("game_result.player2.tag").alias("player2_tag"),
+            col("game_result.player2.trophies").alias("player2_trophies"),
+            col("game_result.player2.crowns").alias("player2_crowns"),
+            udf(map_deck)(col("game_result.player2.deck")).alias("player2_deck_names")
+        )
+        # current_timestamp = datetime.now().isoformat()
+        # # Ghi từng document vào Elasticsearch
+        # for gameResult in gameResults.collect():
+        #     document = gameResult.asDict(recursive=True)
+        #     document['timestamp'] = current_timestamp
+        #     response = es.index(index=ES_INDEX, document=document)
+        #     print("Inserted document into Elasticsearch:", response)            
+        # print(f"Batch processed {batch_id} done!")
+        # Ghi từng document vào Elasticsearch
+        for row in mapped_df.collect():
+            document = row.asDict(recursive=True)
+            document['timestamp'] = datetime.now().isoformat()
+            response = es.index(index=ES_INDEX, document=document)
+            print("Inserted document into Elasticsearch:", response)
+
+        print(f"Batch processed {batch_id} done!")
     query = stockDataframe \
         .writeStream \
         .foreachBatch(process_batch) \
