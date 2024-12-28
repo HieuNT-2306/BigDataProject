@@ -124,6 +124,7 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
     ports:
       - "9200:9200"
 
@@ -147,6 +148,7 @@ services:
     volumes: 
       - ./logstash/pipeline:/usr/share/logstash/pipeline
       - ./spark/data:/opt/spark/spark-events
+      - ./logstash/templates:/usr/share/logstash/templates
     depends_on: 
       - elasticsearch
 

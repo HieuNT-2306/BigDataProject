@@ -82,15 +82,13 @@ if __name__ == "__main__":
         print(f"Batch processing {batch_id} started!")
         gameResults = batch_df.select("game_result.*")
         print(f"{gameResults.count()} records in this batch")
-
+        current_timestamp = datetime.now().isoformat()
         # Ghi từng document vào Elasticsearch
         for gameResult in gameResults.collect():
-            # Convert Spark Row to a dictionary
             document = gameResult.asDict(recursive=True)
-            # Use Elasticsearch client to insert data
+            document['timestamp'] = current_timestamp
             response = es.index(index=ES_INDEX, document=document)
-            print("Inserted document into Elasticsearch:", response)
-
+            print("Inserted document into Elasticsearch:", response)            
         print(f"Batch processed {batch_id} done!")
 
     query = stockDataframe \
