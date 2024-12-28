@@ -140,5 +140,5 @@ if __name__ == "__main__":
         .outputMode("append")
         .start()
     )
-
+    #Khoa gay vl
     query.awaitTermination()
