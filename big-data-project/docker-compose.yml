@@ -42,6 +42,7 @@ services:
       - ./spark/spark_apps:/opt/spark/apps
       - spark-logs:/opt/spark/spark-events
       - ./entrypoint.sh:/entrypoint.sh
+      - ./spark/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
     entrypoint: [ './entrypoint.sh', 'master' ]
     env_file:
       - .env.spark
