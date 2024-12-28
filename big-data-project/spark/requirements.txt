@@ -40,3 +40,4 @@ influxdb
 pymongo
 python-dotenv
 influxdb_client
+elasticsearch
