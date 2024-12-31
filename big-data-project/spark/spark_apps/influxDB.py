@@ -23,16 +23,17 @@ load_dotenv()  # Nạp từ file .env trong thư mục hiện tại
 # INFLUXDB_URL = "http://localhost:8086"  # URL của InfluxDB
 INFLUXDB_URL = "http://influxdb:8086"
 INFLUXDB_DB = os.getenv("INFLUXDB_DB")
-INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET")
+INFLUXDB_PLAYER_BUCKET = os.getenv("INFLUXDB_PLAYER_BUCKET")
+INFLUXDB_CARD_BUCKET = os.getenv("INFLUXDB_CARD_BUCKET")
 INFLUX_ORG = os.getenv("INFLUX_ORG")
-
 INFLUXDB_MEASUREMENT = os.getenv("INFLUXDB_MEASUREMENT")
 INFLUX_TOKEN = os.getenv("INFLUX_TOKEN")
 
 # In các giá trị ra để kiểm tra
 print(f"INFLUXDB_URL: {INFLUXDB_URL}")
 print(f"INFLUXDB_DB: {INFLUXDB_DB}")
-print(f"INFLUXDB_BUCKET: {INFLUXDB_BUCKET}")
+print(f"INFLUXDB_PLAYER_BUCKET: {INFLUXDB_PLAYER_BUCKET}")
+print(f"INFLUXDB_CARD_BUCKET: {INFLUXDB_CARD_BUCKET}")
 print(f"INFLUX_ORG: {INFLUX_ORG}")
 print(f"INFLUXDB_MEASUREMENT: {INFLUXDB_MEASUREMENT}")
 print(f"INFLUX_TOKEN: {INFLUX_TOKEN}")
@@ -40,11 +41,26 @@ print(f"INFLUX_TOKEN: {INFLUX_TOKEN}")
 # Khởi tạo client InfluxDB
 influxdb_client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUX_TOKEN, org=INFLUX_ORG)
 write_api = influxdb_client.write_api(write_options=SYNCHRONOUS)
-try:
-    buckets = influxdb_client.buckets_api().find_bucket_by_name(INFLUXDB_BUCKET)
-    print("Bucket found:", buckets)
-except Exception as e:
-    print(f"Bucket error: {e}")
+
+def create_bucket_if_not_exists(bucket_name, org):
+    try:
+        buckets_api = influxdb_client.buckets_api()
+        
+        bucket = buckets_api.find_bucket_by_name(bucket_name)
+        if bucket is None:
+            retention_rules = None  
+
+            buckets_api.create_bucket(
+                bucket_name=bucket_name,
+                org_id=buckets_api.find_organization(org).id, 
+                retention_rules=retention_rules,
+            )
+            print(f"Bucket '{bucket_name}' created.")
+        else:
+            print(f"Bucket '{bucket_name}' already exists.")
+    except Exception as e:
+        print(f"Error creating bucket: {e}")
+
 
 # Định nghĩa schema cho dữ liệu đầu vào
 schema = StructType([
@@ -108,29 +124,49 @@ if __name__ == "__main__":
         print(expanded_df.show())
         for row in expanded_df.collect():
             try:
-                # Chuẩn bị dữ liệu cho InfluxDB
                 player1 = row['player1']
                 player2 = row['player2']
+                merged_deck = set(player1['deck']) | set(player2['deck'])
+                for card in merged_deck:
+                    print(f"Card: {card}")
+                    crowns = 0
+                    trophies = 0
+                    if card in player1['deck']:
+                        crowns += player1['crowns']
+                        trophies = player1['trophies']
+                    if card in player2['deck']:
+                        crowns -= player2['crowns']
+                        trophies = player2['trophies']
+                    if card in player1['deck'] and card in player2['deck']:
+                        trophies = (player1['trophies'] + player2['trophies'])//2
+                    cardPoint = (
+                        Point("card_results")
+                        .tag("battle_time", row['battle_time'])
+                        .field("game_mode", row['game_mode'])
+                        .tag("card", card)
+                        .field("crowns", crowns)
+                        .field("trophies", int(trophies))
+                    )
+                    write_api.write(bucket=INFLUXDB_CARD_BUCKET, org=INFLUX_ORG, record=cardPoint)
                 point = (
                     Point("game_results")
                     .tag("battle_time", row['battle_time'])
                     .field("game_mode", row['game_mode'])
-                    .field("player1_tag", player1['tag'])
+                    .tag("player1_tag", player1['tag'])
                     .field("player1_trophies", player1['trophies'])
                     .field("player1_crowns", player1['crowns'])
-                    .field("player2_tag", player2['tag'])
+                    .tag("player2_tag", player2['tag'])
                     .field("player2_trophies", player2['trophies'])
                     .field("player2_crowns", player2['crowns'])
-                    .time(datetime.utcnow(), WritePrecision.NS)
                 )
-                # Ghi dữ liệu vào InfluxDB
-                print(f"Inserted row: {row}")
-                write_api.write(bucket=INFLUXDB_BUCKET, org=INFLUX_ORG, record=point)
-                print(f"Inserted row: {row}")
 
+                write_api.write(bucket=INFLUXDB_PLAYER_BUCKET, org=INFLUX_ORG, record=point)
             except Exception as e:
                 print(f"Error writing to InfluxDB: {e}")
+
         
+        print ("Batch processing done!")
+        print(f"Number of rows: {expanded_df.count()}")
         print(f"Batch {batch_id} processed successfully!")
 
     # Bắt đầu streaming query
