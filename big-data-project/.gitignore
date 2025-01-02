@@ -87,6 +87,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+influxdb/data/
 
 # Translations
 *.mo

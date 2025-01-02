@@ -1,0 +1,10 @@
+{
+  "index_patterns": ["*"],
+  "mappings": {
+    "properties": {
+      "time_added": {
+        "type": "date"
+      }
+    }
+  }
+}

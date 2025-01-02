@@ -36,7 +36,7 @@ influxdb
 pymongo
 python-dotenv
 influxdb_client
-
+elasticsearch
 # Added dependencies for recommendation system
 scipy>=1.7.0
 scikit-learn>=0.24.0
