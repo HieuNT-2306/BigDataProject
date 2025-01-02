@@ -10,21 +10,21 @@ services:
       - "9101:9101"
     environment:
       KAFKA_NODE_ID: 1
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: localhost
-      KAFKA_PROCESS_ROLES: 'broker,controller'
-      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@broker:29093'
-      KAFKA_LISTENERS: 'PLAINTEXT://broker:29092,CONTROLLER://broker:29093,PLAINTEXT_HOST://0.0.0.0:9092'
-      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
-      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
-      KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
-      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@broker:29093"
+      KAFKA_LISTENERS: "PLAINTEXT://broker:29092,CONTROLLER://broker:29093,PLAINTEXT_HOST://0.0.0.0:9092"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
 
   spark-master:
@@ -33,7 +33,7 @@ services:
     build: .
     image: hust-spark-image
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
       interval: 5s
       timeout: 3s
       retries: 3
@@ -42,17 +42,18 @@ services:
       - ./spark/spark_apps:/opt/spark/apps
       - spark-logs:/opt/spark/spark-events
       - ./entrypoint.sh:/entrypoint.sh
-    entrypoint: [ './entrypoint.sh', 'master' ]
+      - ./models:/opt/spark/models # Persistent storage for models
+    entrypoint: ["./entrypoint.sh", "master"]
     env_file:
       - .env.spark
     ports:
-      - '9090:8080'
-      - '7077:7077'
+      - "9090:8080"
+      - "7077:7077"
 
   spark-history-server:
     container_name: hust-spark-history
     image: hust-spark-image
-    entrypoint: [ './entrypoint.sh', 'history' ]
+    entrypoint: ["./entrypoint.sh", "history"]
     depends_on:
       - spark-master
     env_file:
@@ -61,11 +62,11 @@ services:
       - spark-logs:/opt/spark/spark-events
       - ./entrypoint.sh:/entrypoint.sh
     ports:
-      - '18080:18080'
+      - "18080:18080"
 
   spark-worker:
     image: hust-spark-image
-    entrypoint: [ './entrypoint.sh', 'worker' ]
+    entrypoint: ["./entrypoint.sh", "worker"]
     depends_on:
       - spark-master
     env_file:
@@ -116,6 +117,21 @@ services:
       INFLUXDB_BUCKET: ${INFLUXDB_BUCKET}
       INFLUX_ORG: ${INFLUX_ORG}
       INFLUXDB_MEASUREMENT: ${INFLUXDB_MEASUREMENT}
+
+  mongo-express:
+    image: mongo-express:latest
+    container_name: mongo-express
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_ADMINUSERNAME: root
+      ME_CONFIG_MONGODB_ADMINPASSWORD: admin
+      ME_CONFIG_MONGODB_URL: mongodb://root:admin@mongodb:27017
+      ME_CONFIG_BASICAUTH_USERNAME: root
+      ME_CONFIG_BASICAUTH_PASSWORD: admin
+    depends_on:
+      - mongodb
 
 volumes:
   spark-logs:
