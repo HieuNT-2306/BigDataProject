@@ -54,7 +54,9 @@ RUN pip3 install --no-cache-dir \
     python-dotenv>=0.19.0 \
     findspark>=1.4.0 \
     numpy>=1.21.0 \
-    hdfs>=2.7.0  # Added this line
+    hdfs>=2.7.0  \
+    pyarrow
+
 
 # Setup Spark related environment variables
 ENV PATH="/opt/spark/sbin:/opt/spark/bin:${PATH}"
@@ -74,3 +76,4 @@ ENV PYTHONPATH=$SPARK_HOME/python/:$PYTHONPATH
 # Copy appropriate entrypoint script
 COPY entrypoint.sh .
 ENTRYPOINT ["./entrypoint.sh"]
+

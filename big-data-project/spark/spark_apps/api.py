@@ -1,21 +1,18 @@
 import os
 from fastapi import FastAPI, HTTPException
 from pymongo import MongoClient
-from typing import List, Optional, Dict, Set
-import numpy as np
+from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 from datetime import datetime
 import logging
 from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
+import pyarrow.parquet as pq
 
-# Set up logging configuration to help with debugging and monitoring
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configuration settings using environment variables with sensible defaults
 class Settings:
     MONGO_HOST = os.getenv("MONGO_HOST", "localhost")
     MONGO_PORT = os.getenv("MONGO_PORT", "27017")
@@ -24,86 +21,64 @@ class Settings:
     MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASSWORD}@{MONGO_HOST}:{MONGO_PORT}"
     MONGO_DATABASE = "BigData"
     MODEL_COLLECTION = "card_recommendation_models"
-    RECOMMENDATIONS_COLLECTION = "card_recommendations"
+    MODEL_BASE_DIR = os.getenv('MODEL_BASE_DIR', '/opt/spark/models')
 
-settings = Settings()
-
-# Pydantic models for request and response validation
 class CardRecommendation(BaseModel):
-    card_id: int = Field(..., description="The ID of the recommended card")
-    score: float = Field(..., ge=0, le=1, description="Recommendation confidence score")
-    timestamp: datetime = Field(default_factory=datetime.now, description="When the recommendation was made")
+    card_id: int
+    score: float
+    timestamp: datetime = Field(default_factory=datetime.now)
 
 class RecommendationRequest(BaseModel):
-    partial_deck: List[int] = Field(..., 
-                                  min_items=1, 
-                                  max_items=7, 
-                                  description="List of card IDs in the current deck")
-    num_recommendations: Optional[int] = Field(default=3, 
-                                             ge=1, 
-                                             le=10, 
-                                             description="Number of recommendations to return")
+    partial_deck: List[int] = Field(..., min_items=1, max_items=7)
+    num_recommendations: Optional[int] = Field(default=3, ge=1, le=10)
 
 class RecommendationResponse(BaseModel):
     recommendations: List[CardRecommendation]
-    model_timestamp: datetime
+    model_name: str
 
-class OptimizedRecommendationService:
-    """
-    Service for providing card recommendations based on partial decks.
-    Uses pre-computed patterns and effectiveness scores from MongoDB.
-    """
-    
+class RecommendationService:
     def __init__(self, mongo_uri: str):
-        """Initialize the service with database connection and load model data"""
         self.mongo_client = MongoClient(mongo_uri)
-        self.db = self.mongo_client[settings.MONGO_DATABASE]
-        # Store pattern mappings and recommendations for quick access
-        self.deck_patterns: Dict[str, int] = {}  # pattern -> id mapping
-        self.recommendations: Dict[int, List[Dict]] = {}  # id -> recommendations
-        self.model_timestamp: Optional[datetime] = None
-        self.load_model()
+        self.db = self.mongo_client[Settings.MONGO_DATABASE]
+        self.card_matrix = None
+        self.deck_patterns = None
+        self.model_name = "continuous_als_model"
+        self.load_latest_data()
 
-    def load_model(self) -> None:
-        """Load and process model data from MongoDB"""
+    def load_latest_data(self):
+        """Load latest data from parquet files"""
         try:
-            # Get the most recent model
-            model_data = self.db[settings.MODEL_COLLECTION].find_one(
+            model_data = self.db[Settings.MODEL_COLLECTION].find_one(
+                {'model_name': self.model_name},
                 sort=[('timestamp', -1)]
             )
             
             if not model_data:
-                raise ValueError("No model found in database")
+                raise ValueError("No model metadata found in database")
 
-            # Process deck patterns for quick lookup
-            for pattern in model_data['deck_pattern_mapping']:
-                self.deck_patterns[pattern['deck_pattern']] = pattern['deck_pattern_id']
+            # Load mapping from parquet
+            mapping_path = model_data.get('mapping_path')
+            logger.info(f"Loading mapping from: {mapping_path}")
+            if os.path.exists(mapping_path):
+                mapping_df = pd.read_parquet(mapping_path)
+                logger.info(f"Mapping columns: {mapping_df.columns.tolist()}")
+                self.deck_patterns = dict(zip(mapping_df['deck_pattern'], mapping_df['deck_pattern_id']))
+                logger.info(f"Loaded {len(self.deck_patterns)} deck patterns")
 
-            # Organize recommendations by pattern ID
-            for entry in model_data['card_matrix']:
-                pattern_id = entry['deck_pattern_id']
-                if pattern_id not in self.recommendations:
-                    self.recommendations[pattern_id] = []
-                
-                # Store recommendation with its score
-                self.recommendations[pattern_id].append({
-                    'card_id': entry['next_card'],
-                    'score': float(entry['effectiveness_score'])
-                })
-
-            self.model_timestamp = model_data['timestamp']
-            logger.info(f"Successfully loaded {len(self.deck_patterns)} patterns "
-                       f"and {len(self.recommendations)} recommendation sets")
+            # Load matrix from parquet
+            matrix_path = model_data.get('matrix_path')
+            logger.info(f"Loading matrix from: {matrix_path}")
+            if os.path.exists(matrix_path):
+                self.card_matrix = pd.read_parquet(matrix_path)
+                logger.info(f"Matrix shape: {self.card_matrix.shape}")
+                logger.info(f"Matrix columns: {self.card_matrix.columns.tolist()}")
             
         except Exception as e:
-            logger.error(f"Error loading model: {str(e)}")
+            logger.error(f"Error loading data: {str(e)}")
             raise
 
-    def _find_best_matching_pattern(self, deck_pattern: str) -> Optional[str]:
-        """
-        Find the stored pattern that best matches the input deck pattern.
-        Uses card overlap to determine the best match.
-        """
+    def find_best_matching_pattern(self, deck_pattern: str) -> Optional[str]:
+        """Find the best matching pattern for input deck"""
         deck_cards = set(deck_pattern.split(','))
         
         best_match = None
@@ -111,8 +86,6 @@ class OptimizedRecommendationService:
         
         for pattern in self.deck_patterns.keys():
             pattern_cards = set(pattern.split(','))
-            
-            # Calculate card overlap
             match_score = len(deck_cards.intersection(pattern_cards))
             
             if match_score > best_match_score:
@@ -121,56 +94,99 @@ class OptimizedRecommendationService:
                 
         return best_match
 
-    def get_recommendations(
-        self, 
-        partial_deck: List[int], 
-        num_recommendations: int = 3
-    ) -> List[Dict]:
-        """Generate card recommendations for a partial deck"""
-        try:
-            # Convert deck to pattern string
-            deck_pattern = ','.join(map(str, sorted(partial_deck)))
-            logger.info(f"Generating recommendations for deck: {deck_pattern}")
+    def find_matching_patterns(self, deck_pattern: str, top_n: int = 5) -> List[int]:
+        deck_cards = set(deck_pattern.split(','))
+        
+        # Store pattern scores
+        pattern_scores = []
+        for pattern, pattern_id in self.deck_patterns.items():
+            pattern_cards = set(pattern.split(','))
+            # Calculate overlap score
+            intersection = len(deck_cards.intersection(pattern_cards))
+            union = len(deck_cards.union(pattern_cards))
+            jaccard_score = intersection / union if union > 0 else 0
             
-            # Find best matching pattern
-            matching_pattern = self._find_best_matching_pattern(deck_pattern)
-            
-            if not matching_pattern:
-                logger.warning(f"No matching pattern found for deck: {deck_pattern}")
-                return []
+            pattern_scores.append({
+                'pattern_id': pattern_id,
+                'score': jaccard_score
+            })
+        
+        # Sort by score and get top N
+        sorted_patterns = sorted(pattern_scores, key=lambda x: x['score'], reverse=True)
+        return [p['pattern_id'] for p in sorted_patterns[:top_n]]
 
-            pattern_id = self.deck_patterns[matching_pattern]
+    def get_recommendations(self, partial_deck: List[int], num_recommendations: int = 3) -> List[Dict]:
+        """Get recommendations for a partial deck"""
+        try:
+            deck_pattern = ','.join(map(str, sorted(partial_deck)))
+            logger.info(f"Finding recommendations for pattern: {deck_pattern}")
             
-            # Get and filter recommendations
-            available_recs = self.recommendations.get(pattern_id, [])
-            filtered_recs = [
-                rec for rec in available_recs 
-                if rec['card_id'] not in partial_deck
-            ]
+            # Get multiple matching patterns
+            pattern_ids = self.find_matching_patterns(deck_pattern)
+            if not pattern_ids:
+                logger.warning("No matching patterns found")
+                return []
+                
+            logger.info(f"Found {len(pattern_ids)} matching patterns")
             
-            # Sort by score and select top N
-            sorted_recs = sorted(
-                filtered_recs, 
-                key=lambda x: x['score'], 
-                reverse=True
-            )[:num_recommendations]
+            # Get recommendations from all matching patterns
+            all_recs = []
+            for pattern_id in pattern_ids:
+                pattern_recs = self.card_matrix[self.card_matrix['deck_pattern_id'] == pattern_id]
+                filtered_recs = pattern_recs[~pattern_recs['next_card'].isin(partial_deck)]
+                all_recs.extend(filtered_recs.to_dict('records'))
             
-            # Add timestamps
+            # If we still don't have enough recommendations, get popular cards
+            if len(all_recs) < num_recommendations:
+                logger.info("Not enough recommendations, adding popular cards")
+                popular_cards = (self.card_matrix[~self.card_matrix['next_card'].isin(partial_deck)]
+                            .groupby('next_card')
+                            .agg({
+                                'effectiveness_score': 'mean',
+                                'total_appearances': 'sum'
+                            })
+                            .reset_index()
+                            .sort_values('total_appearances', ascending=False)
+                            )
+                popular_recs = popular_cards.head(num_recommendations - len(all_recs))
+                all_recs.extend(popular_recs.to_dict('records'))
+            
+            # Aggregate and sort recommendations
+            from collections import defaultdict
+            aggregated_recs = defaultdict(lambda: {'scores': [], 'appearances': 0})
+            
+            for rec in all_recs:
+                card_id = rec['next_card']
+                aggregated_recs[card_id]['scores'].append(rec['effectiveness_score'])
+                aggregated_recs[card_id]['appearances'] += rec.get('total_appearances', 0)
+            
+            # Calculate final scores
+            final_recs = []
+            for card_id, data in aggregated_recs.items():
+                avg_score = sum(data['scores']) / len(data['scores'])
+                final_recs.append({
+                    'card_id': int(card_id),
+                    'score': float(avg_score),
+                    'appearances': data['appearances']
+                })
+            
+            # Sort by score and return top N
+            sorted_recs = sorted(final_recs, key=lambda x: x['score'], reverse=True)[:num_recommendations]
+            logger.info(f"Returning {len(sorted_recs)} recommendations")
+            
             return [{
-                **rec, 
+                'card_id': rec['card_id'],
+                'score': rec['score'],
                 'timestamp': datetime.now()
             } for rec in sorted_recs]
-            
+                
         except Exception as e:
-            logger.error(f"Error generating recommendations: {str(e)}")
+            logger.error(f"Error getting recommendations: {str(e)}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return []
 
-# Initialize FastAPI app with CORS support
-app = FastAPI(
-    title="Card Recommendation Service",
-    description="Optimized service for generating card recommendations",
-    version="1.0.0"
-)
+# Initialize FastAPI app
+app = FastAPI(title="Card Recommendation Service")
 
 app.add_middleware(
     CORSMiddleware,
@@ -180,89 +196,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize recommendation service
-recommendation_service = OptimizedRecommendationService(settings.MONGO_URI)
-
-@app.get("/health")
-async def health_check():
-    """Health check endpoint to verify service status"""
-    return {
-        "status": "healthy",
-        "model_loaded": bool(recommendation_service.deck_patterns),
-        "patterns_loaded": len(recommendation_service.deck_patterns),
-        "timestamp": datetime.now()
-    }
-
-@app.get("/debug/model-data")
-async def debug_model_data():
-    """Debug endpoint to inspect model data structure"""
-    try:
-        model_data = recommendation_service.db[settings.MODEL_COLLECTION].find_one(
-            sort=[('timestamp', -1)]
-        )
-        
-        if not model_data:
-            return {"status": "error", "message": "No model found"}
-
-        # Create safe version of the data for display
-        debug_data = {
-            "available_keys": list(model_data.keys()),
-            "model_structure": {
-                "deck_pattern_mapping": {
-                    "total_entries": len(model_data.get('deck_pattern_mapping', [])),
-                    "sample_data": model_data.get('deck_pattern_mapping', [])[:2]
-                },
-                "card_matrix": {
-                    "total_entries": len(model_data.get('card_matrix', [])),
-                    "sample_data": [
-                        {k: str(v) if isinstance(v, float) and (np.isnan(v) or np.isinf(v)) else v 
-                         for k, v in entry.items()}
-                        for entry in model_data.get('card_matrix', [])[:2]
-                    ]
-                }
-            },
-            "timestamp": model_data.get('timestamp', '').isoformat() if model_data.get('timestamp') else None,
-            "model_name": model_data.get('model_name', 'Not found')
-        }
-        
-        return {"status": "success", "data": debug_data}
-        
-    except Exception as e:
-        logger.error(f"Error in debug endpoint: {str(e)}")
-        return {
-            "status": "error",
-            "message": str(e),
-            "type": str(type(e).__name__)
-        }
+# Initialize service
+recommendation_service = RecommendationService(Settings.MONGO_URI)
 
 @app.post("/recommendations", response_model=RecommendationResponse)
 async def get_recommendations(request: RecommendationRequest):
-    """Generate card recommendations based on a partial deck"""
+    """Get card recommendations for a partial deck"""
     try:
         recommendations = recommendation_service.get_recommendations(
             request.partial_deck,
             request.num_recommendations
         )
         
-        # Store the recommendations for analysis
-        recommendation_service.db[settings.RECOMMENDATIONS_COLLECTION].insert_one({
-            'partial_deck': request.partial_deck,
-            'recommendations': recommendations,
-            'request_timestamp': datetime.now()
-        })
-        
         return RecommendationResponse(
             recommendations=[CardRecommendation(**rec) for rec in recommendations],
-            model_timestamp=recommendation_service.model_timestamp
+            model_name=recommendation_service.model_name
         )
         
     except Exception as e:
-        logger.error(f"Error processing recommendation request: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        logger.error(f"Recommendation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "patterns_loaded": len(recommendation_service.deck_patterns or []),
+        "matrix_shape": recommendation_service.card_matrix.shape if recommendation_service.card_matrix is not None else None,
+        "timestamp": datetime.now()
+    }
+
+@app.get("/debug")
+async def debug_info():
+    """Debug endpoint to check data loading"""
+    return {
+        "deck_patterns_count": len(recommendation_service.deck_patterns or []),
+        "deck_pattern_sample": list(recommendation_service.deck_patterns.keys())[:5] if recommendation_service.deck_patterns else None,
+        "card_matrix_info": {
+            "shape": recommendation_service.card_matrix.shape if recommendation_service.card_matrix is not None else None,
+            "columns": recommendation_service.card_matrix.columns.tolist() if recommendation_service.card_matrix is not None else None,
+            "sample": recommendation_service.card_matrix.head().to_dict('records') if recommendation_service.card_matrix is not None else None
+        }
+    }

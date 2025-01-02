@@ -1,0 +1,19 @@
+FROM openjdk:11-jdk-slim
+
+WORKDIR /app
+
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip && \
+    ln -sf python3 /usr/bin/python && \
+    ln -sf pip3 /usr/bin/pip
+
+RUN pip install --no-cache-dir pandas pyarrow fastapi uvicorn pymongo pydantic python-dotenv 
+
+RUN mkdir -p /opt/spark/models
+
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=python3
+
+EXPOSE 8000
+
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

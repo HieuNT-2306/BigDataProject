@@ -42,7 +42,7 @@ services:
       - ./spark/spark_apps:/opt/spark/apps
       - spark-logs:/opt/spark/spark-events
       - ./entrypoint.sh:/entrypoint.sh
-      - ./models:/opt/spark/models # Persistent storage for models
+      - ./models:/opt/spark/models
     entrypoint: ["./entrypoint.sh", "master"]
     env_file:
       - .env.spark
@@ -110,7 +110,6 @@ services:
       INFLUXDB_USER: ${INFLUXDB_USER}
       INFLUXDB_USER_PASSWORD: ${INFLUXDB_USER_PASSWORD}
       INFLUXDB_ADMIN_USER_TOKEN: ${INFLUX_TOKEN}
-
       INFLUXDB_DB: ${INFLUXDB_DB} # the database to be created on first startup
       INFLUXDB_HTTP_AUTH_ENABLED: true # enable http auth
       INFLUX_TOKEN: ${INFLUX_TOKEN}
@@ -133,5 +132,24 @@ services:
     depends_on:
       - mongodb
 
+  recommendation-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: recommendation-api
+    image: recommendation-api
+    restart: unless-stopped
+    environment:
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_USER=root
+      - MONGO_PASSWORD=admin
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongodb
+    volumes:
+      - ./models:/opt/spark/models:rw
+      - ./spark/spark_apps:/app
 volumes:
   spark-logs:
