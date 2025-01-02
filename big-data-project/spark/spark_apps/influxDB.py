@@ -117,6 +117,23 @@ if __name__ == "__main__":
     data_stream = kafka_stream.select(col("value").cast("string").alias("data"))
     structured_stream = data_stream.select(from_json(col("data"), schema).alias("game_result"))
 
+    #id to name
+    cards_path = "/opt/spark/apps/cards.json"
+    gamemodes_path = "/opt/spark/apps/gamemodes.json"
+    
+    cardjson = json.load(open(cards_path))
+    gamemodesjson = json.load(open(gamemodes_path))
+    # print(f"Cards: {cardjson}")
+    # print(f"Gamemodes: {gamemodesjson}")    
+    # Tạo ánh xạ từ id sang name
+    # Ánh xạ từ card id sang tên card
+    cards_mapping = {card["id"]: card["name"] for card in cardjson}
+
+    # Ánh xạ từ game mode id sang tên game mode
+    gamemodes_mapping = {mode["id"]: mode["name_en"] for mode in gamemodesjson}
+
+
+
     # Hàm xử lý từng batch
     def process_batch(batch_df, batch_id):
         print(f"Processing batch {batch_id} started!")
