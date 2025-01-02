@@ -227,4 +227,7 @@ WIP*.ipynb
 *.csv.gz
 *.sqlite
 *.parquet
+
+/influxdb
+./influxdb
 influxdb
