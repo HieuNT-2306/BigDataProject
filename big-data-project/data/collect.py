@@ -213,8 +213,8 @@ async def kafka():
     async for battles in battlelogs:
         for b in battles:
             
-            # Determine player order based on tags
-            if b.player1.tag > b.player2.tag:
+            # Player 1 wins
+            if b.player1.crowns > b.player2.crowns:
                 battle = {
                     "battle_time": b.battle_time,
                     "game_mode": b.game_mode,
